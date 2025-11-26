@@ -6,6 +6,7 @@ namespace FukaMiya.Utils
     public sealed class StateMachine
     {
         public State CurrentState { get; private set; }
+        public State PreviousState { get; private set; }
 
         private readonly Dictionary<Type, State> states = new();
 
@@ -14,6 +15,7 @@ namespace FukaMiya.Utils
             if (CurrentState.CheckTransitionTo(out var nextState))
             {
                 CurrentState.OnExit();
+                PreviousState = CurrentState;
                 CurrentState = nextState;
                 CurrentState.OnEnter();
             }
@@ -51,9 +53,9 @@ namespace FukaMiya.Utils
 
     public static class StateExtensions
     {
-        public static TransitionBuilder To<T>(this State from) where T : State, new()
+        public static ITransitionStarter To<T>(this State from) where T : State, new()
         {
-            return new TransitionBuilder(from, from.StateMachine.At<T>());
+            return TransitionBuilder.To(from, from.StateMachine.At<T>());
         }
     }
 
@@ -76,7 +78,7 @@ namespace FukaMiya.Utils
             Transition maxWeightTransition = null;
             foreach (var transition in transitions)
             {
-                if (transition.Condition == null || transition.Condition.Evaluate())
+                if (transition.Condition == null || transition.Condition())
                 {
                     if (maxWeightTransition == null || transition.Weight > maxWeightTransition.Weight)
                     {

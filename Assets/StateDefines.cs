@@ -17,10 +17,18 @@ public class InGameState : State
     }
 }
 
-public class MainMenuState : State
+public class ResultState : State
 {
     public override void OnEnter()
     {
-        Debug.Log("Entered MainMenu State");
+        Debug.Log("Entered Result State");
+    }
+}
+
+public class SettingState : State
+{
+    public override void OnEnter()
+    {
+        Debug.Log("Entered Setting State");
     }
 }

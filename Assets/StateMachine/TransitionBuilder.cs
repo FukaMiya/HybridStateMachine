@@ -2,102 +2,110 @@ using System;
 
 namespace FukaMiya.Utils
 {
+    public interface ITransitionInitializer
+    {
+        public ITransitionInitializer From<T>() where T : State, new();
+        public ITransitionStarter To<T>() where T : State, new();
+    }
+
+    public sealed class TransitionInitializer : ITransitionInitializer
+    {
+        private readonly StateMachine stateMachine;
+        private readonly State fromState;
+
+        public TransitionInitializer(StateMachine stateMachine, State fromState)
+        {
+            this.stateMachine = stateMachine;
+            this.fromState = fromState;
+        }
+
+        public ITransitionInitializer From<T>() where T : State, new()
+        {
+            var newFromState = stateMachine.At<T>();
+            return new TransitionInitializer(stateMachine, newFromState);
+        }
+
+        public ITransitionStarter To<T>() where T : State, new()
+        {
+            var toState = stateMachine.At<T>();
+            return TransitionBuilder.To(fromState, toState);
+        }
+
+        public ITransitionStarter Back()
+        {
+            return TransitionBuilder.To(fromState, stateMachine.PreviousState);
+        }
+    }
+
     public interface ITransitionStarter
     {
-        public ITransitionChain When(Func<bool> condition);
-        public ITransitionChain When(ICondition condition);
-        public Transition Build();
+        public ITransitionChain When(StateCondition condition);
+        public Transition Always();
     }
 
     public interface ITransitionChain
     {
-        public ITransitionChain And(Func<bool> condition);
-        public ITransitionChain And(ICondition condition);
-        public ITransitionChain Or(Func<bool> condition);
-        public ITransitionChain Or(ICondition condition);
+        public ITransitionChain And(StateCondition condition);
+        public ITransitionChain Or(StateCondition condition);
         public Transition Build();
     }
 
     public sealed class TransitionBuilder : ITransitionStarter, ITransitionChain
     {
-        private readonly State fromState;
-        private readonly State toState;
-        private ICondition condition;
+        private State fromState;
+        private State toState;
+        private StateCondition condition;
 
-        public TransitionBuilder(State fromState)
+        public static ITransitionStarter To(State fromState, State toState)
         {
-            this.fromState = fromState;
-        }
-        public TransitionBuilder(State fromState, State toState)
-        {
-            this.fromState = fromState;
-            this.toState = toState;
+            var instance = new TransitionBuilder
+            {
+                fromState = fromState,
+                toState = toState
+            };
+            return instance;
         }
 
-        public ITransitionChain When(Func<bool> condition) => When(new FuncCondition(condition));
-        public ITransitionChain When(ICondition condition)
+        public ITransitionChain When(StateCondition condition)
         {
             this.condition = condition;
             return this;
         }
-        
-        public ITransitionChain And(Func<bool> condition) => And(new FuncCondition(condition));
-        public ITransitionChain And(ICondition condition)
+
+        public ITransitionChain And(StateCondition condition)
         {
-            this.condition = this.condition == null ? condition : new AndCondition(this.condition, condition);
+            this.condition = () => this.condition() && condition();
             return this;
         }
 
-        public ITransitionChain Or(Func<bool> condition) => Or(new FuncCondition(condition));
-        public ITransitionChain Or(ICondition condition)
+        public ITransitionChain Or(StateCondition condition)
         {
-            this.condition = this.condition == null ? condition : new OrCondition(this.condition, condition);
+            this.condition = () => this.condition() || condition();
             return this;
+        }
+
+        public Transition Always()
+        {
+            return Build();
         }
 
         public Transition Build()
         {
             var transition = new Transition(fromState, toState);
-            transition.AddConditions(condition);
+            transition.SetCondition(condition);
             fromState.AddTransition(transition);
             return transition;
         }
     }
 
-    public interface ICondition
-    {
-        bool Evaluate();
-    }
-
-    public class FuncCondition : ICondition
-    {
-        private readonly Func<bool> func;
-        public FuncCondition(Func<bool> func) => this.func = func;
-        public bool Evaluate() => func();
-    }
-
-    public class AndCondition : ICondition
-    {
-        private readonly ICondition a;
-        private readonly ICondition b;
-        public AndCondition(ICondition a, ICondition b) { this.a = a; this.b = b; }
-        public bool Evaluate() => a.Evaluate() && b.Evaluate();
-    }
-
-    public class OrCondition : ICondition
-    {
-        private readonly ICondition a;
-        private readonly ICondition b;
-        public OrCondition(ICondition a, ICondition b) { this.a = a; this.b = b; }
-        public bool Evaluate() => a.Evaluate() || b.Evaluate();
-    }
+    public delegate bool StateCondition();
 
     public sealed class Transition : IEquatable<Transition>
     {
         public State From { get; }
         public State To { get; }
         public float Weight { get; }
-        public ICondition Condition { get; private set; }
+        public StateCondition Condition { get; private set; }
 
         public Transition(State from, State to, float weight = 1f)
         {
@@ -106,7 +114,7 @@ namespace FukaMiya.Utils
             Weight = weight;
         }
 
-        public Transition AddConditions(ICondition condition)
+        public Transition SetCondition(StateCondition condition)
         {
             Condition = condition;
             return this;
@@ -121,43 +129,39 @@ namespace FukaMiya.Utils
 
     public static class Condition
     {
-        public static ICondition Any(Func<bool> a, Func<bool> b)
+        public static StateCondition Any(params StateCondition[] conditions)
         {
-            return new OrCondition(new FuncCondition(a), new FuncCondition(b));
-        }
-
-        public static ICondition Any(params Func<bool>[] conditions)
-        {
-            return new FuncCondition(() =>
+            return () =>
             {
                 foreach (var condition in conditions)
                 {
                     if (condition()) return true;
                 }
                 return false;
-            });
+            };
         }
 
-        public static ICondition All(Func<bool> a, Func<bool> b)
+        public static StateCondition All(params StateCondition[] conditions)
         {
-            return new AndCondition(new FuncCondition(a), new FuncCondition(b));
-        }
-
-        public static ICondition All(params Func<bool>[] conditions)
-        {
-            return new FuncCondition(() =>
+            return () =>
             {
                 foreach (var condition in conditions)
                 {
                     if (!condition()) return false;
                 }
                 return true;
-            });
+            };
         }
 
-        public static ICondition Not(Func<bool> condition)
+        public static StateCondition Not(StateCondition condition)
         {
-            return new FuncCondition(() => !condition());
+            return () => !condition();
+        }
+        
+        // ラムダ式を明示的に変換したい場合用（基本不要だが互換性のため）
+        public static StateCondition Is(Func<bool> predicate)
+        {
+            return new StateCondition(predicate);
         }
     }
 }
