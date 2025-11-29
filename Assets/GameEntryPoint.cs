@@ -4,7 +4,6 @@ using FukaMiya.Utils;
 public class GameEntryPoint : MonoBehaviour
 {
     private StateMachine stateMachine;
-    private Transform parent;
 
     void Start()
     {
@@ -28,9 +27,9 @@ public class GameEntryPoint : MonoBehaviour
             .Build();
 
         // 元いた状態に戻る
-        // settingState.Back()
-        //     .When(() => Input.GetKeyDown(KeyCode.Escape))
-        //     .Build();
+        settingState.Back()
+            .When(() => Input.GetKeyDown(KeyCode.Backspace))
+            .Build();
 
         // 複雑な条件
         inGameState.To<ResultState>()

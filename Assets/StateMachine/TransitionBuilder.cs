@@ -30,11 +30,6 @@ namespace FukaMiya.Utils
             var toState = stateMachine.At<T>();
             return TransitionBuilder.To(fromState, toState);
         }
-
-        public ITransitionStarter Back()
-        {
-            return TransitionBuilder.To(fromState, stateMachine.PreviousState);
-        }
     }
 
     public interface ITransitionStarter
@@ -53,7 +48,8 @@ namespace FukaMiya.Utils
     public sealed class TransitionBuilder : ITransitionStarter, ITransitionChain
     {
         private State fromState;
-        private State toState;
+        private State fixedToState;
+        private Func<State> stateProvider;
         private StateCondition condition;
 
         public static ITransitionStarter To(State fromState, State toState)
@@ -61,7 +57,17 @@ namespace FukaMiya.Utils
             var instance = new TransitionBuilder
             {
                 fromState = fromState,
-                toState = toState
+                fixedToState = toState
+            };
+            return instance;
+        }
+
+        public static ITransitionStarter To(State fromState, Func<State> toStateProvider)
+        {
+            var instance = new TransitionBuilder
+            {
+                fromState = fromState,
+                stateProvider = toStateProvider
             };
             return instance;
         }
@@ -93,7 +99,20 @@ namespace FukaMiya.Utils
 
         public Transition Build()
         {
-            var transition = new Transition(toState);
+            if (fixedToState == null && stateProvider == null)
+            {
+                throw new InvalidOperationException("Either fixedToState or stateProvider must be set.");
+            }
+
+            Transition transition;
+            if (fixedToState != null)
+            {
+                transition = new Transition(fixedToState);
+            }
+            else
+            {
+                transition = new Transition(stateProvider);
+            }
             transition.SetCondition(condition);
             fromState.AddTransition(transition);
             return transition;
@@ -104,13 +123,20 @@ namespace FukaMiya.Utils
 
     public sealed class Transition : IEquatable<Transition>
     {
-        public State To { get; }
+        private readonly State to;
+        private readonly Func<State> stateProvider;
         public float Weight { get; }
         public StateCondition Condition { get; private set; }
 
         public Transition(State to, float weight = 1f)
         {
-            To = to;
+            this.to = to;
+            Weight = weight;
+        }
+
+        public Transition(Func<State> stateProvider, float weight = 1f)
+        {
+            this.stateProvider = stateProvider;
             Weight = weight;
         }
 
@@ -120,10 +146,15 @@ namespace FukaMiya.Utils
             return this;
         }
 
+        public State GetToState()
+        {
+            return stateProvider != null ? stateProvider() : to;
+        }
+
         public bool Equals(Transition other)
         {
             if (other == null) return false;
-            return To == other.To && Weight == other.Weight && Condition == other.Condition;
+            return to == other.to && Weight == other.Weight && Condition == other.Condition;
         }
     }
 

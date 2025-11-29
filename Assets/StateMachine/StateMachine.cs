@@ -20,26 +20,27 @@ namespace FukaMiya.Utils
 
         public void Update()
         {
-            if (AnyState.CheckTransitionTo(out var nextState))
+            if (AnyState.CheckTransitionTo(out var nextState) ||
+                CurrentState.CheckTransitionTo(out nextState))
             {
-                CurrentState.OnExit();
-                PreviousState = CurrentState;
-                CurrentState = nextState;
-                CurrentState.OnEnter();
+                ChangeState(nextState);
                 return;
             }
 
-            if (CurrentState.CheckTransitionTo(out nextState))
+            CurrentState.OnUpdate();
+        }
+
+        void ChangeState(State nextState)
+        {
+            if (CurrentState.IsStateOf(nextState.GetType()))
             {
-                CurrentState.OnExit();
-                PreviousState = CurrentState;
-                CurrentState = nextState;
-                CurrentState.OnEnter();
+                return;
             }
-            else
-            {
-                CurrentState.OnUpdate();   
-            }
+
+            CurrentState.OnExit();
+            PreviousState = CurrentState;
+            CurrentState = nextState;
+            CurrentState.OnEnter();
         }
 
         public void SetInitialState<T>() where T : State, new()
@@ -74,6 +75,15 @@ namespace FukaMiya.Utils
         {
             return TransitionBuilder.To(from, from.StateMachine.At<T>());
         }
+
+        public static ITransitionStarter Back(this State from)
+        {
+            return TransitionBuilder.To(from, () => 
+            {
+                UnityEngine.Debug.Log($"Returning to previous state: {from.StateMachine.PreviousState}");
+                return from.StateMachine.PreviousState;
+            });
+        }
     }
 
     public abstract class State
@@ -106,7 +116,7 @@ namespace FukaMiya.Utils
 
             if (maxWeightTransition != null)
             {
-                nextState = maxWeightTransition.To;
+                nextState = maxWeightTransition.GetToState();
                 return true;
             }
 
@@ -119,15 +129,13 @@ namespace FukaMiya.Utils
             transitions.Add(transition);
         }
 
-        public bool IsStateOf<T>() where T : State
-        {
-            return this is T;
-        }
+        public bool IsStateOf<T>() where T : State => this is T;
+        public bool IsStateOf(Type type) => GetType() == type;
 
         public override string ToString() => GetType().Name;
     }
 
     public sealed class AnyState : State
     {
-    }   
+    }
 }
