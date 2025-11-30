@@ -1,7 +1,7 @@
 using UnityEngine;
 using FukaMiya.Utils;
 
-public class TitleState : State
+public sealed class TitleState : State
 {
     public override void OnEnter()
     {
@@ -9,7 +9,7 @@ public class TitleState : State
     }
 }
 
-public class InGameState : State
+public sealed class InGameState : State
 {
     public override void OnEnter()
     {
@@ -17,7 +17,7 @@ public class InGameState : State
     }
 }
 
-public class ResultState : State
+public sealed class ResultState : State
 {
     public override void OnEnter()
     {
@@ -25,10 +25,18 @@ public class ResultState : State
     }
 }
 
-public class SettingState : State
+public sealed class SettingState : State
 {
     public override void OnEnter()
     {
         Debug.Log("Entered Setting State");
+    }
+}
+
+public sealed class SecretState : State
+{
+    public override void OnEnter()
+    {
+        Debug.Log("Entered Secret State");
     }
 }

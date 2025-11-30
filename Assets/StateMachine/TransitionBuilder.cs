@@ -32,25 +32,37 @@ namespace FukaMiya.Utils
         }
     }
 
-    public interface ITransitionStarter
+    public interface ITransitionStarter : ITransitionParameterSetter
     {
         public ITransitionChain When(StateCondition condition);
         public Transition Always();
     }
 
-    public interface ITransitionChain
+    public interface ITransitionChain : ITransitionParameterSetter
     {
         public ITransitionChain And(StateCondition condition);
         public ITransitionChain Or(StateCondition condition);
         public Transition Build();
     }
 
-    public sealed class TransitionBuilder : ITransitionStarter, ITransitionChain
+    public interface ITransitionFinalizer : ITransitionParameterSetter
+    {
+        public Transition Build();
+    }
+
+    public interface ITransitionParameterSetter
+    {
+        public ITransitionFinalizer SetAllowReentry(bool allowReentry);
+    }
+
+    public sealed class TransitionBuilder : ITransitionStarter, ITransitionChain, ITransitionFinalizer
     {
         private State fromState;
         private State fixedToState;
         private Func<State> stateProvider;
         private StateCondition condition;
+
+        private readonly TransitionParams transitionParams = new();
 
         public static ITransitionStarter To(State fromState, State toState)
         {
@@ -92,6 +104,12 @@ namespace FukaMiya.Utils
             return this;
         }
 
+        public ITransitionFinalizer SetAllowReentry(bool allowReentry)
+        {
+            transitionParams.IsReentryAllowed = allowReentry;
+            return this;
+        }
+
         public Transition Always()
         {
             return Build();
@@ -114,6 +132,7 @@ namespace FukaMiya.Utils
                 transition = new Transition(stateProvider);
             }
             transition.SetCondition(condition);
+            transition.SetParams(transitionParams);
             fromState.AddTransition(transition);
             return transition;
         }
@@ -128,6 +147,8 @@ namespace FukaMiya.Utils
         public float Weight { get; }
         public StateCondition Condition { get; private set; }
 
+        public TransitionParams Params { get; private set;}
+
         public Transition(State to, float weight = 1f)
         {
             this.to = to;
@@ -140,10 +161,14 @@ namespace FukaMiya.Utils
             Weight = weight;
         }
 
-        public Transition SetCondition(StateCondition condition)
+        public void SetCondition(StateCondition condition)
         {
             Condition = condition;
-            return this;
+        }
+
+        public void SetParams(TransitionParams transitionParams)
+        {
+            Params = transitionParams;
         }
 
         public State GetToState()
@@ -156,6 +181,11 @@ namespace FukaMiya.Utils
             if (other == null) return false;
             return to == other.to && Weight == other.Weight && Condition == other.Condition;
         }
+    }
+    
+    public sealed class TransitionParams
+    {
+        public bool IsReentryAllowed { get; set; } = false;
     }
 
     public static class Condition

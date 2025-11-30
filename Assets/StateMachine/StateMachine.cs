@@ -20,6 +20,11 @@ namespace FukaMiya.Utils
 
         public void Update()
         {
+            if (CurrentState == null)
+            {
+                throw new InvalidOperationException("CurrentState is not set. Please set the initial state using SetInitialState<T>() method.");
+            }
+
             if (AnyState.CheckTransitionTo(out var nextState) ||
                 CurrentState.CheckTransitionTo(out nextState))
             {
@@ -32,11 +37,6 @@ namespace FukaMiya.Utils
 
         void ChangeState(State nextState)
         {
-            if (CurrentState.IsStateOf(nextState.GetType()))
-            {
-                return;
-            }
-
             CurrentState.OnExit();
             PreviousState = CurrentState;
             CurrentState = nextState;
@@ -78,11 +78,7 @@ namespace FukaMiya.Utils
 
         public static ITransitionStarter Back(this State from)
         {
-            return TransitionBuilder.To(from, () => 
-            {
-                UnityEngine.Debug.Log($"Returning to previous state: {from.StateMachine.PreviousState}");
-                return from.StateMachine.PreviousState;
-            });
+            return TransitionBuilder.To(from, () => from.StateMachine.PreviousState);
         }
     }
 
@@ -102,21 +98,27 @@ namespace FukaMiya.Utils
 
         public bool CheckTransitionTo(out State nextState)
         {
-            Transition maxWeightTransition = null;
+            State maxWeightToState = null;
+            float maxWeight = float.MinValue;
             foreach (var transition in transitions)
             {
                 if (transition.Condition == null || transition.Condition())
                 {
-                    if (maxWeightTransition == null || transition.Weight > maxWeightTransition.Weight)
+                    var toState = transition.GetToState();
+                    if (toState == null) continue;
+                    if (!transition.Params.IsReentryAllowed && StateMachine.CurrentState.IsStateOf(toState.GetType())) continue;
+
+                    if (maxWeightToState == null || transition.Weight > maxWeight)
                     {
-                        maxWeightTransition = transition;
+                        maxWeightToState = toState;
+                        maxWeight = transition.Weight;
                     }
                 }
             }
 
-            if (maxWeightTransition != null)
+            if (maxWeightToState != null)
             {
-                nextState = maxWeightTransition.GetToState();
+                nextState = maxWeightToState;
                 return true;
             }
 

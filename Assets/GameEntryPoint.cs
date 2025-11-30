@@ -24,6 +24,7 @@ public class GameEntryPoint : MonoBehaviour
         stateMachine.AnyState
             .To<SettingState>()
             .When(() => Input.GetKeyDown(KeyCode.Escape))
+            .SetAllowReentry(false) //明示的に同じステートへの遷移を禁止
             .Build();
 
         // 元いた状態に戻る
@@ -32,7 +33,7 @@ public class GameEntryPoint : MonoBehaviour
             .Build();
 
         // 複雑な条件
-        inGameState.To<ResultState>()
+        inGameState.To<SecretState>()
             .When(Condition.All(
                 Condition.Any(
                     () => Input.GetKey(KeyCode.LeftShift),
@@ -47,15 +48,15 @@ public class GameEntryPoint : MonoBehaviour
             .When(() => Input.GetKeyDown(KeyCode.Space))
             .Build();
 
-        resultState.To<InGameState>()
-            .When(() => Input.GetKeyDown(KeyCode.Return))
+        resultState.To<TitleState>()
+            .When(() => Input.GetKeyDown(KeyCode.Space))
             .Build();
 
         settingState.To<TitleState>()
             .When(() => Input.GetKeyDown(KeyCode.Return))
             .Build();
 
-        stateMachine.SetInitialState<TitleState>();
+        // stateMachine.SetInitialState<TitleState>();
     }
 
     void Update()
