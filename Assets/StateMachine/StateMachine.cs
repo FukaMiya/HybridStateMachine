@@ -90,7 +90,7 @@ namespace FukaMiya.Utils
             StateMachine = stateMachine;
         }
 
-        private readonly HashSet<Transition> transitions = new();
+        private readonly List<Transition> transitions = new();
 
         public virtual void OnEnter() { }
         public virtual void OnExit() { }
@@ -128,6 +128,10 @@ namespace FukaMiya.Utils
 
         public void AddTransition(Transition transition)
         {
+            if (transitions.Contains(transition))
+            {
+                throw new InvalidOperationException("Transition already exists in this state.");
+            }
             transitions.Add(transition);
         }
 
