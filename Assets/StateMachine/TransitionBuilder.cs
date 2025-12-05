@@ -5,11 +5,10 @@ namespace FukaMiya.Utils
     public interface ITransitionInitializer
     {
         public ITransitionInitializer From<T>() where T : State, new();
-        public ITransitionStarter To<T>() where T : State, new();
-        public ITransitionStarter To<T, C>(C context) where T : State<C>, new();
-        public ITransitionStarter To(State toState);
-        public ITransitionStarter To<C>(State toState, C context);
-
+        public ITransitionStarter<NoContext> To<T>() where T : State, new();
+        public ITransitionStarter<TContext> To<T, TContext>(Func<TContext> context) where T : State<TContext>, new();
+        public ITransitionStarter<NoContext> To(State toState);
+        public ITransitionStarter<TContext> To<TContext>(State toState, Func<TContext> context);
     }
 
     public sealed class TransitionInitializer : ITransitionInitializer
@@ -29,142 +28,144 @@ namespace FukaMiya.Utils
             return new TransitionInitializer(stateMachine, newFromState);
         }
 
-        public ITransitionStarter To<T>() where T : State, new()
+        public ITransitionStarter<NoContext> To<T>() where T : State, new()
         {
             var toState = stateMachine.At<T>();
-            return TransitionBuilder.To(fromState, toState);
+            return TransitionBuilder<NoContext>.To(fromState, toState, null);
         }
 
-        public ITransitionStarter To(State toState)
+        public ITransitionStarter<NoContext> To(State toState)
         {
-            return TransitionBuilder.To(fromState, toState);
+            return TransitionBuilder<NoContext>.To(fromState, toState, null);
         }
 
-        public ITransitionStarter To<T, C>(C context) where T : State<C>, new()
+        public ITransitionStarter<TContext> To<T, TContext>(Func<TContext> context) where T : State<TContext>, new()
         {
-            var toState = stateMachine.At<T, C>(context);
-            return TransitionBuilder.To(fromState, toState);
+            var toState = stateMachine.At<T>();
+            return TransitionBuilder<TContext>.To(fromState, toState, context);
         }
 
-        public ITransitionStarter To<C>(State toState, C context)
+        public ITransitionStarter<TContext> To<TContext>(State toState, Func<TContext> context)
         {
-            if (toState is State<C> stateWithContext)
+            if (toState is State<TContext>)
             {
-                stateWithContext.UpdateContext(context);
-                return TransitionBuilder.To(fromState, toState);
+                return TransitionBuilder<TContext>.To(fromState, toState, context);
             }
             else
             {
-                throw new InvalidOperationException($"The state {toState.GetType().Name} is not of type State<{typeof(C).Name}>.");
+                throw new InvalidOperationException($"The state {toState.GetType().Name} is not of type State<{typeof(TContext).Name}>.");
             }
         }
     }
 
-    public interface ITransitionStarter : ITransitionParameterSetter
+    public interface ITransitionStarter<TContext> : ITransitionParameterSetter<TContext>
     {
-        public ITransitionChain When(StateCondition condition);
-        public Transition Always();
+        public ITransitionChain<TContext> When(StateCondition condition);
+        public Transition<TContext> Always();
     }
 
-    public interface ITransitionChain : ITransitionParameterSetter
+    public interface ITransitionChain<TContext> : ITransitionParameterSetter<TContext>
     {
-        public ITransitionChain And(StateCondition condition);
-        public ITransitionChain Or(StateCondition condition);
-        public Transition Build();
+        public ITransitionChain<TContext> And(StateCondition condition);
+        public ITransitionChain<TContext> Or(StateCondition condition);
+        public Transition<TContext> Build();
     }
 
-    public interface ITransitionFinalizer : ITransitionParameterSetter
+    public interface ITransitionFinalizer<TContext> : ITransitionParameterSetter<TContext>
     {
-        public Transition Build();
+        public Transition<TContext> Build();
     }
 
-    public interface ITransitionParameterSetter
+    public interface ITransitionParameterSetter<TContext>
     {
-        public ITransitionFinalizer SetAllowReentry(bool allowReentry);
-        public ITransitionFinalizer SetWeight(float weight);
+        public ITransitionFinalizer<TContext> SetAllowReentry(bool allowReentry);
+        public ITransitionFinalizer<TContext> SetWeight(float weight);
     }
 
-    public sealed class TransitionBuilder : ITransitionStarter, ITransitionChain, ITransitionFinalizer
+    public sealed class TransitionBuilder<TContext> : ITransitionStarter<TContext>, ITransitionChain<TContext>, ITransitionFinalizer<TContext>
     {
         private State fromState;
         private State fixedToState;
+        private Func<TContext> contextProvider;
         private Func<State> stateProvider;
         private StateCondition condition;
 
         private readonly TransitionParams transitionParams = new();
 
-        public static ITransitionStarter To(State fromState, State toState)
+        public static ITransitionStarter<TContext> To(State fromState, State toState, Func<TContext> contextProvider)
         {
-            var instance = new TransitionBuilder
+            var instance = new TransitionBuilder<TContext>
             {
                 fromState = fromState,
-                fixedToState = toState
+                fixedToState = toState,
+                contextProvider = contextProvider
             };
             return instance;
         }
 
-        public static ITransitionStarter To(State fromState, Func<State> toStateProvider)
+        public static ITransitionStarter<TContext> To(State fromState, Func<State> toStateProvider, Func<TContext> contextProvider)
         {
-            var instance = new TransitionBuilder
+            var instance = new TransitionBuilder<TContext>
             {
                 fromState = fromState,
-                stateProvider = toStateProvider
+                stateProvider = toStateProvider,
+                contextProvider = contextProvider
             };
             return instance;
         }
 
-        public ITransitionChain When(StateCondition condition)
+        public ITransitionChain<TContext> When(StateCondition condition)
         {
             this.condition = condition;
             return this;
         }
 
-        public ITransitionChain And(StateCondition condition)
+        public ITransitionChain<TContext> And(StateCondition condition)
         {
             var current = this.condition;
             this.condition = () => current() && condition();
             return this;
         }
 
-        public ITransitionChain Or(StateCondition condition)
+        public ITransitionChain<TContext> Or(StateCondition condition)
         {
             var current = this.condition;
             this.condition = () => current() || condition();
             return this;
         }
 
-        public ITransitionFinalizer SetAllowReentry(bool allowReentry)
+        public ITransitionFinalizer<TContext> SetAllowReentry(bool allowReentry)
         {
             transitionParams.IsReentryAllowed = allowReentry;
             return this;
         }
 
-        public ITransitionFinalizer SetWeight(float weight)
+        public ITransitionFinalizer<TContext> SetWeight(float weight)
         {
             transitionParams.Weight = weight;
             return this;
         }
 
-        public Transition Always()
+        public Transition<TContext> Always()
         {
             return Build();
         }
 
-        public Transition Build()
+        public Transition<TContext> Build()
         {
             if (fixedToState == null && stateProvider == null)
             {
                 throw new InvalidOperationException("Either fixedToState or stateProvider must be set.");
             }
 
-            Transition transition;
+            Transition<TContext> transition;
             if (fixedToState != null)
             {
-                transition = new Transition(fixedToState);
+                transition = new Transition<TContext>(fixedToState, contextProvider);
             }
             else
             {
-                transition = new Transition(stateProvider);
+                transition = new Transition<TContext>(stateProvider, contextProvider);
             }
             transition.SetCondition(condition);
             transition.SetParams(transitionParams);
@@ -175,22 +176,32 @@ namespace FukaMiya.Utils
 
     public delegate bool StateCondition();
 
-    public sealed class Transition : IEquatable<Transition>
+    public interface ITransition
+    {
+        public StateCondition Condition { get; }
+        public TransitionParams Params { get; }
+        public State GetToState();
+    }
+
+    public sealed class Transition<TContext> : ITransition
     {
         private readonly State to;
+        private readonly Func<TContext> contextProvider;
         private readonly Func<State> stateProvider;
         public StateCondition Condition { get; private set; }
 
         public TransitionParams Params { get; private set;}
 
-        public Transition(State to)
+        public Transition(State to, Func<TContext> contextProvider)
         {
             this.to = to;
+            this.contextProvider = contextProvider;
         }
 
-        public Transition(Func<State> stateProvider)
+        public Transition(Func<State> stateProvider, Func<TContext> contextProvider)
         {
             this.stateProvider = stateProvider;
+            this.contextProvider = contextProvider;
         }
 
         public void SetCondition(StateCondition condition)
@@ -208,10 +219,9 @@ namespace FukaMiya.Utils
             return stateProvider != null ? stateProvider() : to;
         }
 
-        public bool Equals(Transition other)
+        public TContext GetContext()
         {
-            if (other == null) return false;
-            return to == other.to && Condition == other.Condition;
+            return contextProvider != null ? contextProvider() : default;
         }
     }
     

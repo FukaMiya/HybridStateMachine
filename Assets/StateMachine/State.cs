@@ -3,42 +3,18 @@ using System.Collections.Generic;
 
 namespace FukaMiya.Utils
 {
-    public static class StateExtensions
-    {
-        public static ITransitionStarter To<T>(this State from) where T : State, new()
-        {
-            return TransitionBuilder.To(from, from.StateMachine.At<T>());
-        }
+    // public interface IState
+    // {
+    //     public StateMachine StateMachine { get; }
+    //     public IReadOnlyList<ITransition> GetTransitions { get; }
 
-        public static ITransitionStarter To(this State from, State to)
-        {
-            return TransitionBuilder.To(from, to);
-        }
-
-        public static ITransitionStarter To<T, C>(this State from, C context) where T : State<C>, new()
-        {
-            var toState = from.StateMachine.At<T, C>(context);
-            return TransitionBuilder.To(from, toState);
-        }
-
-        public static ITransitionStarter To<C>(this State from, State to, C context)
-        {
-            if (to is State<C> stateWithContext)
-            {
-                stateWithContext.UpdateContext(context);
-                return TransitionBuilder.To(from, to);
-            }
-            else
-            {
-                throw new InvalidOperationException($"The state {to.GetType().Name} is not of type State<{typeof(C).Name}>.");
-            }
-        }
-
-        public static ITransitionStarter Back(this State from)
-        {
-            return TransitionBuilder.To(from, () => from.StateMachine.PreviousState);
-        }
-    }
+    //     public void AddTransition(ITransition transition);
+    //     public void Enter();
+    //     public void Exit();
+    //     public void Update();
+    //     public bool IsStateOf<T>() where T : IState;
+    //     public bool IsStateOf(Type type);
+    // }
 
     public abstract class State
     {
@@ -48,8 +24,8 @@ namespace FukaMiya.Utils
             StateMachine = stateMachine;
         }
 
-        private readonly List<Transition> transitions = new();
-        public IReadOnlyList<Transition> GetTransitions => transitions.AsReadOnly();
+        protected readonly List<ITransition> transitions = new();
+        public IReadOnlyList<ITransition> GetTransitions => transitions.AsReadOnly();
 
         protected virtual void OnEnter() { }
         protected virtual void OnExit() { }
@@ -70,7 +46,7 @@ namespace FukaMiya.Utils
             OnUpdate();
         }
 
-        public bool CheckTransitionTo(out State nextState)
+        public virtual bool CheckTransitionTo(out State nextState)
         {
             State maxWeightToState = null;
             float maxWeight = float.MinValue;
@@ -100,7 +76,7 @@ namespace FukaMiya.Utils
             return false;
         }
 
-        public void AddTransition(Transition transition)
+        public void AddTransition(ITransition transition)
         {
             if (transitions.Contains(transition))
             {
@@ -117,22 +93,58 @@ namespace FukaMiya.Utils
 
     public abstract class State<T> : State
     {
-        public T Context { get; private set; }
-
-        public void Setup(StateMachine stateMachine, T context)
+        public T Context
         {
-            UpdateContext(context);
-            base.Setup(stateMachine);
+            get
+            {
+                return contextProvider != null ? contextProvider() : default;
+            }
         }
+        private Func<T> contextProvider;
+        public void SetContextProvider(Func<T> contextProvider) => this.contextProvider = contextProvider;
 
-        public void UpdateContext(T context)
+        public override bool CheckTransitionTo(out State nextState)
         {
-            UnityEngine.Debug.Log($"Context updated: {context}");
-            Context = context;
+            State maxWeightToState = null;
+            ITransition maxWeightTransition = null;
+            float maxWeight = float.MinValue;
+            foreach (var transition in transitions)
+            {
+                if (transition.Condition == null || transition.Condition())
+                {
+                    var toState = transition.GetToState();
+                    if (toState == null) continue;
+                    if (!transition.Params.IsReentryAllowed && StateMachine.CurrentState.IsStateOf(toState.GetType())) continue;
+
+                    if (maxWeightToState == null || transition.Params.Weight > maxWeight)
+                    {
+                        maxWeightToState = toState;
+                        maxWeightTransition = transition;
+                        maxWeight = transition.Params.Weight;
+                    }
+                }
+            }
+
+            if (maxWeightToState != null)
+            {
+                nextState = maxWeightToState;
+                if (maxWeightTransition is Transition<T> typedTransition)
+                {
+                    SetContextProvider(typedTransition.GetContext);
+                }
+                return true;
+            }
+
+            nextState = null;
+            return false;
         }
     }
 
     public sealed class AnyState : State
+    {
+    }
+
+    public sealed class NoContext
     {
     }
 }

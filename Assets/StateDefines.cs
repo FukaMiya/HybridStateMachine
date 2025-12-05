@@ -17,11 +17,11 @@ public sealed class InGameState : State
     }
 }
 
-public sealed class ResultState : State<ContextData>
+public sealed class ResultState : State<int>
 {
     protected override void OnEnter()
     {
-        Debug.Log($"Entered Result State with Score: {Context.Score}");
+        Debug.Log($"Entered Result State with Score: {Context}");
     }
 }
 

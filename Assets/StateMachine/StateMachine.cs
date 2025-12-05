@@ -62,33 +62,10 @@ namespace FukaMiya.Utils
             return state;
         }
 
-        public State At<T, C>(C context) where T : State<C>, new()
-        {
-            if (states.TryGetValue(typeof(T), out var state))
-            {
-                if (state is State<C> typedState)
-                {
-                    typedState.UpdateContext(context);
-                }
-                return state;
-            }
-
-            state = CreateStateInstance<T, C>(context);
-            states[typeof(T)] = state;
-            return state;
-        }
-
         State CreateStateInstance<T>() where T : State, new()
         {
             T instance = new ();
             instance.Setup(this);
-            return instance;
-        }
-
-        State CreateStateInstance<T, C>(C context) where T : State<C>, new()
-        {
-            T instance = new ();
-            instance.Setup(this, context);
             return instance;
         }
 
@@ -105,6 +82,42 @@ namespace FukaMiya.Utils
                 }
             }
             return sb.ToString();
+        }
+    }
+
+    public static class StateExtensions
+    {
+        public static ITransitionStarter<NoContext> To<T>(this State from) where T : State, new()
+        {
+            return TransitionBuilder<NoContext>.To(from, from.StateMachine.At<T>(), null);
+        }
+
+        public static ITransitionStarter<NoContext> To(this State from, State to)
+        {
+            return TransitionBuilder<NoContext>.To(from, to, null);
+        }
+
+        public static ITransitionStarter<TContext> To<T, TContext>(this State from, Func<TContext> context) where T : State<TContext>, new()
+        {
+            var toState = from.StateMachine.At<T>();
+            return TransitionBuilder<TContext>.To(from, toState, context);
+        }
+
+        public static ITransitionStarter<TContext> To<TContext>(this State from, State to, Func<TContext> context)
+        {
+            if (to is State<TContext>)
+            {
+                return TransitionBuilder<TContext>.To(from, to, context);
+            }
+            else
+            {
+                throw new InvalidOperationException($"The state {to.GetType().Name} is not of type State<{typeof(TContext).Name}>.");
+            }
+        }
+
+        public static ITransitionStarter<NoContext> Back(this State from)
+        {
+            return TransitionBuilder<NoContext>.To(from, () => from.StateMachine.PreviousState, null);
         }
     }
 }
