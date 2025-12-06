@@ -81,12 +81,11 @@ namespace FukaMiya.Utils
         public override string ToString() => GetType().Name;
     }
 
-    // コンテキストを受け取るステート
-    public interface IStateWithContext
+    internal interface IStateWithContext
     {
-        public void ClearContextProvider();
+        void ClearContextProvider();
     }
-    
+
     public abstract class State<T> : State, IStateWithContext
     {
         public T Context
