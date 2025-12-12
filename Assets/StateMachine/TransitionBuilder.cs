@@ -75,6 +75,14 @@ namespace FukaMiya.Utils
 
         public ITransitionConditionSetter<TContext> On<TEvent>(TEvent eventId) where TEvent : Enum
         {
+            if (fromState.StateMachine is EnumTypeHolder enumTypeHolder)
+            {
+                if (enumTypeHolder.EnumType != null && enumTypeHolder.EnumType != typeof(TEvent))
+                {
+                    throw new InvalidOperationException($"Event type mismatch. Expected: {enumTypeHolder.EnumType.Name}, Actual: {typeof(TEvent).Name}");
+                }
+            }
+
             this.condition = null;
             this.eventId = eventId.GetHashCode();
             return this;

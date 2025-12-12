@@ -1,6 +1,8 @@
+using System;
+
 namespace FukaMiya.Utils
 {
-    internal sealed class PushAndPullStateMachine : PullStateMachine, IPushAndPullStateMachine
+    internal sealed class PushAndPullStateMachine : PullStateMachine, IPushAndPullStateMachine, EnumTypeHolder
     {
         public PushAndPullStateMachine(StateFactory factory) : base(factory)
         {
@@ -24,6 +26,12 @@ namespace FukaMiya.Utils
             PreviousState = CurrentState;
             CurrentState = nextState;
             CurrentState.Enter();
+        }
+
+        public Type EnumType { get; private set; }
+        public void SetEnumType(Type enumType)
+        {
+            EnumType = enumType;
         }
     }
 

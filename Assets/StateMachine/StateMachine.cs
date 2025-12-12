@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace FukaMiya.Utils
 {
@@ -18,6 +19,12 @@ namespace FukaMiya.Utils
         void Update();
     }
 
+    internal interface EnumTypeHolder
+    {
+        Type EnumType { get; }
+        void SetEnumType(Type enumType);
+    }
+
     public interface IPushStateMachine : IStateMachine
     {
         void Fire(int e);
@@ -27,6 +34,13 @@ namespace FukaMiya.Utils
     {
         public static void Fire<TEvent>(this IPushStateMachine stateMachine, TEvent eventId) where TEvent : Enum
         {
+            if (stateMachine is EnumTypeHolder enumTypeHolder)
+            {
+                if (enumTypeHolder.EnumType != null && enumTypeHolder.EnumType != typeof(TEvent))
+                {
+                    throw new InvalidOperationException($"Event type mismatch. Expected: {enumTypeHolder.EnumType.Name}, Actual: {typeof(TEvent).Name}");
+                }
+            }
             stateMachine.Fire(eventId.GetHashCode());
         }
     }
@@ -44,7 +58,9 @@ namespace FukaMiya.Utils
 
         public static IPushAndPullStateMachine Create<TEvent>(StateFactory factory) where TEvent : Enum
         {
-            return new PushAndPullStateMachine(factory);
+            var sm = new PushAndPullStateMachine(factory);
+            sm.SetEnumType(typeof(TEvent));
+            return sm;
         }
     }
 

@@ -1,98 +1,192 @@
+using System;
 using UnityEngine;
 using FukaMiya.Utils;
 
+// 1. イベントIDの定義（プロジェクトで統一したEnumを使うのがおすすめ）
+public enum GameEvent
+{
+    Pause,      // ポーズ
+    Resume,     // ポーズ解除
+    Attack,     // 攻撃
+    GameOver    // ゲームオーバー（外部からの強制通知など）
+}
+
+enum Test
+{
+    A, B, C
+}
+
 public class GameEntryPoint : MonoBehaviour
 {
-    enum EventId
-    {
-        SecretEntrance
-    }
+    // インターフェースで保持（Pull/Push両方使える型）
     private IPushAndPullStateMachine stateMachine;
 
-    public int InitialScore = 100;
+    // デモ用のパラメータ
+    public int Score = 0;
+    public bool IsGrounded = true;
 
     void Start()
     {
+        // 2. ファクトリのセットアップ
+        // 引数なしコンストラクタのStateは自動生成されるので登録不要。
+        // 引数が必要なStateだけ手動で登録する。
         var factory = new StateFactory();
-        factory.Register<InGameState>(() => new InGameState(InitialScore));
-        stateMachine = StateMachine.Create<EventId>(factory);
+        
+        // 例: 初期スコアを注入して生成
+        factory.Register<ResultState>(() => new ResultState(score: 0)); 
 
-        var titleState = stateMachine.At<TitleState>();
-        var inGameState = stateMachine.At<InGameState>() as InGameState;
-        var resultState = stateMachine.At<ResultState>();
-        var settingState = stateMachine.At<SettingState>();
+        // 3. ステートマシンの生成
+        // 型引数でEnumを指定することで、APIの整合性を保つ（内部的にはint管理）
+        stateMachine = StateMachine.Create<GameEvent>(factory);
 
-        // Whenに直接条件を渡す
-        titleState.To<InGameState>()
-            .When(Condition.Any(
-                () => Input.GetKeyDown(KeyCode.Return),
-                () => Input.GetMouseButtonDown(0)))
-            .Build();
+        // 各ステートの取得
+        var title = stateMachine.At<TitleState>();
+        var inGame = stateMachine.At<InGameState>();
+        var pause = stateMachine.At<PauseState>();
+        var attack = stateMachine.At<AttackState>() as AttackState;
+        var result = stateMachine.At<ResultState>();
 
-        titleState.To<SecretState>()
-            .On(EventId.SecretEntrance)
-            .When(() => Input.GetKey(KeyCode.LeftShift))
-            .Build();
+        // --- 遷移定義 ---
 
-        stateMachine.At<SecretState>().To<TitleState>()
-            .On(EventId.SecretEntrance)
-            .Always();
-
-        // AnyStateからの遷移
-        stateMachine.AnyState
-            .To<SettingState>()
-            .When(() => Input.GetKeyDown(KeyCode.Escape))
-            .SetAllowReentry(false) //明示的に同じステートへの遷移を禁止
-            .Build();
-
-        // 元いた状態に戻る
-        settingState.Back()
-            .When(() => Input.GetKeyDown(KeyCode.Backspace))
-            .Build();
-
-        // 複雑な条件
-        inGameState.To<SecretState>()
-            .When(Condition.All(
-                Condition.Any(
-                    () => Input.GetKey(KeyCode.LeftShift),
-                    () => Input.GetKey(KeyCode.RightShift)
-                ),
-                () => Input.GetKey(KeyCode.Alpha1),
-                () => Input.GetKey(KeyCode.Alpha2),
-                () => Input.GetKeyDown(KeyCode.Alpha3)))
-            .Build();
-
-        // 動的コンテキスト付きの状態遷移
-        inGameState.To<ResultState, int>(() => inGameState.Score)
+        // A. Pull型（ポーリング）: 条件を満たしたら遷移
+        // Enterキーで Title -> InGame
+        title.To(inGame)
             .When(() => Input.GetKeyDown(KeyCode.Return))
             .Build();
 
-        // 動的コンテキスト無しの状態遷移も可能
-        inGameState.To<ResultState>()
+        // B. Push型（イベント駆動）: イベントが発火したら即座に遷移
+        // Pauseイベントで InGame -> Pause
+        inGame.To(pause)
+            .On(GameEvent.Pause)
+            .Always(); // 条件なし（イベントのみ）の場合はAlways必須
+
+        // C. ハイブリッド型: イベント発生時、さらに条件を満たしていたら遷移
+        // Attackイベント発生時に、接地(IsGrounded)していれば InGame -> Attack
+        inGame.To(attack)
+            .On(GameEvent.Attack)
+            .When(() => IsGrounded)
+            .Build();
+
+        // 攻撃が終わったら自動で戻る（Pull型）
+        attack.To(inGame)
+            .When(() => attack.Context.IsAnimationFinished) // ※Context例として自分自身を参照
+            .Build();
+
+        // D. Back（履歴）機能: 直前のステートに戻る
+        // Resumeイベントで Pause -> 直前の状態（InGameなど）
+        pause.Back()
+            .On(GameEvent.Resume)
+            .Always();
+
+        // E. AnyState: どの状態からでも遷移
+        // GameOverイベントが飛んできたら、問答無用でリザルトへ
+        stateMachine.AnyState.To(result)
+            .On(GameEvent.GameOver)
+            .Always();
+
+        // F. コンテキスト渡し: 遷移時にデータを渡す
+        // Spaceキーで InGame -> Result (現在のスコアを渡す)
+        inGame.To<ResultState, int>(() => Score)
             .When(() => Input.GetKeyDown(KeyCode.Space))
             .Build();
 
-        resultState.To<TitleState>()
+        // リザルトからタイトルへ（再入を許可しない設定例）
+        result.To(title)
             .When(() => Input.GetKeyDown(KeyCode.Return))
+            .SetAllowReentry(false)
             .Build();
 
-        settingState.To<TitleState>()
-            .When(() => Input.GetKeyDown(KeyCode.Return))
-            .Build();
-
+        // --- 初期化 ---
         stateMachine.SetInitialState<TitleState>();
 
-        // マーメイド記法で状態遷移図を出力
+        // --- 可視化 ---
+        // 定義した遷移図をMermaid記法でコンソールに出力
         Debug.Log(stateMachine.ToMermaidString());
     }
 
     void Update()
     {
+        // 4. 更新処理 (Pull型の監視)
         stateMachine.Update();
 
-        if (Input.GetKeyDown(KeyCode.F))
+        // 5. イベント発火 (Push型のトリガー)
+        // 拡張メソッドのおかげでEnumをそのまま渡せる
+        if (Input.GetKeyDown(KeyCode.P))
         {
-            stateMachine.Fire(EventId.SecretEntrance);
+            stateMachine.Fire(GameEvent.Pause);
         }
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            stateMachine.Fire(GameEvent.Resume);
+        }
+        if (Input.GetKeyDown(KeyCode.Z))
+        {
+            stateMachine.Fire(GameEvent.Attack);
+        }
+        if (Input.GetKeyDown(KeyCode.G))
+        {
+            stateMachine.Fire(GameEvent.GameOver);
+        }
+    }
+}
+
+// --- ステート定義例 ---
+
+public class TitleState : State 
+{
+    protected override void OnEnter() => Debug.Log("Enter: Title");
+}
+
+public class InGameState : State 
+{
+    protected override void OnEnter() => Debug.Log("Enter: InGame (Press 'P' to Pause, 'Z' to Attack, 'Space' to Result)");
+    protected override void OnUpdate() 
+    {
+        // ステート内で入力監視も可能
+    }
+}
+
+public class PauseState : State 
+{
+    protected override void OnEnter() => Debug.Log("Enter: Pause (Press 'R' to Resume)");
+}
+
+public class AttackState : State<AttackState> // 自分自身をContextにするパターン
+{
+    public bool IsAnimationFinished = false;
+    private float timer = 0f;
+
+    protected override void OnEnter()
+    {
+        Debug.Log("Enter: Attack (Duration 1.0s)");
+        timer = 0f;
+        IsAnimationFinished = false;
+        SetContextProvider(() => this); // 自分をContextとしてセット
+    }
+
+    protected override void OnUpdate()
+    {
+        timer += Time.deltaTime;
+        if (timer > 1.0f) IsAnimationFinished = true;
+    }
+}
+
+// データを受け取るステート
+public class ResultState : State<int>
+{
+    private readonly int defaultScore;
+
+    // 引数付きコンストラクタ（Factoryで生成される）
+    public ResultState(int score)
+    {
+        this.defaultScore = score;
+    }
+    // 自動生成用（念のため用意する場合）
+    public ResultState() : this(0) { }
+
+    protected override void OnEnter()
+    {
+        // 渡されたContextを表示
+        Debug.Log($"Enter: Result - Score: {Context}"); 
     }
 }
