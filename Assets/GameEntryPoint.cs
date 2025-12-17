@@ -38,7 +38,7 @@ public class GameEntryPoint : MonoBehaviour
         var title = stateMachine.At<TitleState>();
         var inGame = stateMachine.At<InGameState>();
         var pause = stateMachine.At<PauseState>();
-        var attack = stateMachine.At<AttackState>() as AttackState;
+        var attack = stateMachine.At<AttackState>();
         var result = stateMachine.At<ResultState>();
 
         // --- 遷移定義 ---

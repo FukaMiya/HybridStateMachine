@@ -51,14 +51,14 @@ namespace HybridStateMachine
             CurrentState.Enter();
         }
 
-        public State At<T>() where T : State
+        public T At<T>() where T : State
         {
             if (typeof(T) == typeof(AnyState))
             {
-                return AnyState;
+                return AnyState as T;
             }
 
-            var state = stateFactory.CreateState<T>();
+            var state = stateFactory.GetState<T>();
             state.SetStateMachine(this);
             return state;
         }

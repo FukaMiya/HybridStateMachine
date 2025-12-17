@@ -46,7 +46,7 @@ namespace HybridStateMachine
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        State At<T>() where T : State;
+        T At<T>() where T : State;
 
         /// <summary>
         /// Generates a Mermaid diagram string representing the state machine.
@@ -193,44 +193,48 @@ namespace HybridStateMachine
             factories[typeof(T)] = factory;
         }
 
-        internal State CreateState<T>() where T : State
+        internal T GetState<T>() where T : State
         {
             var stateType = typeof(T);
             if (stateCache.TryGetValue(stateType, out var cachedState))
             {
-                return cachedState;
+                return cachedState as T;
             }
 
-            if (!factories.ContainsKey(stateType))
+            return CreateState<T>();
+        }
+
+        internal T CreateState<T>() where T : State
+        {
+            var stateType = typeof(T);
+            if (factories.TryGetValue(stateType, out var factory))
             {
-                if (IsAutoCreateEnabled)
-                {
-                    State autoCreatedState;
-                    try
-                    {
-                        autoCreatedState = Activator.CreateInstance(stateType) as State;
-                    }
-                    catch (MissingMethodException)
-                    {
-                        throw new InvalidOperationException($"Failed to auto-create {stateType.Name}. It requires a parameterless constructor.");
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new InvalidOperationException($"An error occurred while creating {stateType.Name}: {ex.Message}", ex);
-                    }
-
-                    stateCache[stateType] = autoCreatedState;
-                    return autoCreatedState;
-                }
-                else
-                {
-                    throw new InvalidOperationException($"State of type {stateType.Name} is not registered in the StateFactory.");   
-                }
+                var newState = factory() ?? throw new InvalidOperationException($"Factory for state type {stateType.Name} returned null.");
+                stateCache[stateType] = newState;
+                return newState as T;
             }
 
-            var newState = factories[stateType]() ?? throw new InvalidOperationException($"Factory for state type {stateType.Name} returned null.");
-            stateCache[stateType] = newState;
-            return newState;
+            if (IsAutoCreateEnabled)
+            {
+                State autoCreatedState;
+                try
+                {
+                    autoCreatedState = Activator.CreateInstance(stateType) as State;
+                }
+                catch (MissingMethodException)
+                {
+                    throw new InvalidOperationException($"Failed to auto-create {stateType.Name}. It requires a parameterless constructor.");
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"An error occurred while creating {stateType.Name}: {ex.Message}", ex);
+                }
+
+                stateCache[stateType] = autoCreatedState;
+                return autoCreatedState as T;
+            }
+            
+            throw new InvalidOperationException($"State of type {stateType.Name} is not registered in the StateFactory.");   
         }
     }
 }
